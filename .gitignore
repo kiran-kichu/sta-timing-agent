@@ -1,0 +1,11 @@
+# NEVER commit the API key
+.env
+
+# recreated from requirements.txt
+.venv/
+
+# scratch netlists the agent edits
+work/
+
+__pycache__/
+*.pyc

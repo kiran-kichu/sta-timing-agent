@@ -1,8 +1,9 @@
 """Baseline: delay-ranked greedy sizing, NO revert. The thing to beat."""
-import sta_parse
+import sys, json, sta_parse
 from sta_env import Design, AREAS, FAMILIES
 
-D = Design("p3.6")
+V = sys.argv[1] if len(sys.argv)>1 else "p3.6"
+D = Design(V)
 base = D.sta()
 print("baseline:", base)
 
@@ -38,3 +39,9 @@ final = D.sta()
 print("\nGREEDY  final:", final)
 print("ΔWNS :", round(final["wns_ns"] - base["wns_ns"], 3))
 print("Δarea:", round(final["area"] - base["area"], 2))
+
+print("RESULT_JSON " + json.dumps({
+    "method":"greedy","repeat":0,"variant":V,
+    "wns_base":base["wns_ns"],"tns_base":base["tns_ns"],
+    "wns_final":final["wns_ns"],"tns_final":final["tns_ns"],
+    "area_delta":round(final["area"]-base["area"],2)}))

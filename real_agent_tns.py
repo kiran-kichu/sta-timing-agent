@@ -225,6 +225,18 @@ print(f"\nBASELINE : {BASE}")
 print(f"FINAL    : {final}")
 print(f"ΔWNS     : {round(final['wns_ns'] - BASE['wns_ns'], 3)}")
 print(f"Δarea    : {round(final['area'] - BASE['area'], 2)}")
+import json as _json
+print("RESULT_JSON " + _json.dumps({
+    "variant": VARIANT,
+    "wns_base": BASE["wns_ns"], "tns_base": BASE["tns_ns"],
+    "wns_final": final["wns_ns"], "tns_final": final["tns_ns"],
+    "area_delta": round(final["area"] - BASE["area"], 2),
+    "moves_attempted": len(D.history),
+    "moves_kept": sum(1 for h in D.history if h["kept"] is None),
+    "moves_reverted": sum(1 for h in D.history if h["kept"] is False),
+    "harmful_kept": sum(1 for h in D.history
+                        if h["kept"] is None and h["delta_wns"] < 0),
+}))
 print(f"\nmoves attempted: {len(D.history)}")
 for h in D.history:
     print("   ", h)

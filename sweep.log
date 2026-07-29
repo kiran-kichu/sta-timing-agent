@@ -1,0 +1,40 @@
+nohup: ignoring input
+[     0s] agent p3.6 rep 0
+    wns -0.58 -> -0.19  tns -12.32 -> -0.83  area +21.3
+[    74s] agent p3.6 rep 1
+    wns -0.58 -> -0.16  tns -12.32 -> -0.69  area +22.6
+[   152s] agent p3.6 rep 2
+    wns -0.58 -> -0.16  tns -12.32 -> -0.69  area +22.6
+[   232s] agent p4.0 rep 0
+    wns -0.18 -> 0.0  tns -0.52 -> 0.0  area +5.0
+[   269s] agent p4.0 rep 1
+    wns -0.18 -> 0.0  tns -0.52 -> 0.0  area +5.0
+[   297s] agent p4.0 rep 2
+    wns -0.18 -> 0.0  tns -0.52 -> 0.0  area +5.0
+[   329s] agent p4.4 rep 0
+    wns 0.0 -> 0.0  tns 0.0 -> 0.0  area +0.0
+[   334s] agent p4.4 rep 1
+    wns 0.0 -> 0.0  tns 0.0 -> 0.0  area +0.0
+[   340s] agent p4.4 rep 2
+    wns 0.0 -> 0.0  tns 0.0 -> 0.0  area +0.0
+[   344s] agent p4.8 rep 0
+    wns 0.0 -> 0.0  tns 0.0 -> 0.0  area +0.0
+[   349s] agent p4.8 rep 1
+    wns 0.0 -> 0.0  tns 0.0 -> 0.0  area +0.0
+[   353s] agent p4.8 rep 2
+    wns 0.0 -> 0.0  tns 0.0 -> 0.0  area +0.0
+[   358s] agent p5.2 rep 0
+    wns 0.0 -> 0.0  tns 0.0 -> 0.0  area +0.0
+[   363s] agent p5.2 rep 1
+    wns 0.0 -> 0.0  tns 0.0 -> 0.0  area +0.0
+[   367s] agent p5.2 rep 2
+    wns 0.0 -> 0.0  tns 0.0 -> 0.0  area +0.0
+[   372s] agent p6.0 rep 0
+    wns 0.0 -> 0.0  tns 0.0 -> 0.0  area +0.0
+[   377s] agent p6.0 rep 1
+    wns 0.0 -> 0.0  tns 0.0 -> 0.0  area +0.0
+[   382s] agent p6.0 rep 2
+    wns 0.0 -> 0.0  tns 0.0 -> 0.0  area +0.0
+
+done in 6.4 min -> sweep_results.csv
+18 successful runs of 18 attempted

@@ -1,0 +1,6 @@
+RESULT_JSON {"method": "greedy", "repeat": 0, "variant": "p3.6", "wns_base": -0.58, "tns_base": -12.32, "wns_final": -0.32, "tns_final": -1.49, "area_delta": 128.9}
+RESULT_JSON {"method": "greedy", "repeat": 0, "variant": "p4.0", "wns_base": -0.18, "tns_base": -0.52, "wns_final": 0.0, "tns_final": 0.0, "area_delta": 52.6}
+RESULT_JSON {"method": "greedy", "repeat": 0, "variant": "p4.4", "wns_base": 0.0, "tns_base": 0.0, "wns_final": 0.0, "tns_final": 0.0, "area_delta": 0.0}
+RESULT_JSON {"method": "greedy", "repeat": 0, "variant": "p4.8", "wns_base": 0.0, "tns_base": 0.0, "wns_final": 0.0, "tns_final": 0.0, "area_delta": 0.0}
+RESULT_JSON {"method": "greedy", "repeat": 0, "variant": "p5.2", "wns_base": 0.0, "tns_base": 0.0, "wns_final": 0.0, "tns_final": 0.0, "area_delta": 0.0}
+RESULT_JSON {"method": "greedy", "repeat": 0, "variant": "p6.0", "wns_base": 0.0, "tns_base": 0.0, "wns_final": 0.0, "tns_final": 0.0, "area_delta": 0.0}

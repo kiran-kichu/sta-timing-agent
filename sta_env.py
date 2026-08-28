@@ -10,14 +10,11 @@ ORFS = os.path.expanduser("~/OpenROAD-flow-scripts/flow")
 LIB  = f"{ORFS}/platforms/sky130hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib"
 
 # Fast corner (min delay analysis) for hold checking. Same folder as LIB so
-# both resolve correctly whether running locally or inside the Docker image
-# (the Dockerfile copies both files into this same platforms/sky130hd/lib path).
+# both resolve correctly whether running locally or inside the Docker image.
 LIB_FAST = f"{ORFS}/platforms/sky130hd/lib/sky130_fd_sc_hd__ff_n40C_1v95.lib"
 
 WORK = os.path.expanduser("~/sta-agent/work")
 
-# Locate the OpenSTA binary explicitly. Relying on PATH means the script only
-# works in a terminal where `source env.sh` was run, which is a trap.
 def _find_sta():
     cand = [
         os.path.expanduser("~/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/sta"),
@@ -40,7 +37,6 @@ TNS_MIN_RE = re.compile(r"^tns min\s+(-?[\d.]+)")
 
 
 def _load_liberty():
-    """cell -> area, and base name -> sorted list of available drive strengths."""
     areas, cur = {}, None
     with open(LIB) as f:
         for line in f:
@@ -69,28 +65,31 @@ class Design:
         os.makedirs(WORK, exist_ok=True)
         self.netlist = f"{WORK}/netlist.v"
         shutil.copy(f"{self.var}/1_2_yosys.v", self.netlist)
-        self.snapshots = []      # for revert_last()
-        self.history = []        # audit trail for the writeup
+        self.default_sdc = f"{self.var}/1_synth.sdc"
+        self.snapshots = []
+        self.history = []
         self._cache = None
         self._hold_cache = None
+        self._mode_cache = {}   # mode_name -> setup result, separate from the default cache
 
     # ---------- measurement ----------
 
-    def _run(self, extra="", lib=None):
+    def _run(self, extra="", lib=None, sdc=None):
         lib = lib or LIB
+        sdc = sdc or self.default_sdc
         tcl = f"{WORK}/sta.tcl"
         with open(tcl, "w") as f:
             f.write(f"read_liberty {lib}\n"
                     f"read_verilog {self.netlist}\n"
                     f"link_design {self.top}\n"
-                    f"read_sdc {self.var}/1_synth.sdc\n"
+                    f"read_sdc {sdc}\n"
                     f"{extra}\n")
         return subprocess.run([STA_BIN, "-exit", tcl],
                               capture_output=True, text=True).stdout
 
     def sta(self):
-        """Setup (max delay) WNS/TNS at the typical corner -- unchanged from
-        before. Never summed from parsed paths, always straight from OpenSTA."""
+        """Setup (max delay) WNS/TNS at the typical corner, using this
+        design's default SDC. Unchanged behavior from before."""
         if self._cache is None:
             out = self._run("report_wns -digits 4\nreport_tns -digits 4\n")
             wns = tns = None
@@ -103,9 +102,8 @@ class Design:
         return self._cache
 
     def hold(self):
-        """Hold (min delay) WNS/TNS at the fast corner. Separately cached
-        from sta() since it is a genuinely different measurement (different
-        liberty file, different analysis type)."""
+        """Hold (min delay) WNS/TNS at the fast corner, using this design's
+        default SDC."""
         if self._hold_cache is None:
             out = self._run("report_wns -digits 4 -min\nreport_tns -digits 4 -min\n",
                             lib=LIB_FAST)
@@ -116,6 +114,23 @@ class Design:
             self._hold_cache = {"hold_wns_ns": wns, "hold_tns_ns": tns,
                                 "hold_met": wns is not None and wns >= 0}
         return self._hold_cache
+
+    def setup_under_sdc(self, mode_name, sdc_path):
+        """Setup (max delay) WNS/TNS at the typical corner, under an
+        ALTERNATE SDC file representing a different mode (e.g. a different
+        clock period or case-analysis setting). Cached per mode_name,
+        separate from the default sta() cache."""
+        if mode_name not in self._mode_cache:
+            out = self._run("report_wns -digits 4\nreport_tns -digits 4\n",
+                            sdc=sdc_path)
+            wns = tns = None
+            for line in out.splitlines():
+                if (m := WNS_RE.match(line)): wns = float(m.group(1))
+                if (m := TNS_RE.match(line)): tns = float(m.group(1))
+            self._mode_cache[mode_name] = {
+                "mode": mode_name, "wns_ns": wns, "tns_ns": tns,
+                "timing_met": wns is not None and wns >= 0}
+        return self._mode_cache[mode_name]
 
     def area(self):
         total = 0.0
@@ -150,8 +165,10 @@ class Design:
         open(self.netlist, "w").write(self.snapshots.pop())
         self._cache = None
         self._hold_cache = None
+        self._mode_cache = {}
         return True
 
     def invalidate(self):
         self._cache = None
         self._hold_cache = None
+        self._mode_cache = {}

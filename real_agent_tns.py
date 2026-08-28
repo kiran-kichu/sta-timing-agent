@@ -14,16 +14,22 @@ MODEL = "deepseek-chat"
 if len(sys.argv) > 1 and sys.argv[1] == "--custom":
     VAR_PATH = sys.argv[2]
     TOP = sys.argv[3] if len(sys.argv) > 3 else "picorv32"
+    EXTRA_MODE_SDCS = sys.argv[4:]   # zero or more additional SDC file paths
     VARIANT = f"custom:{TOP}"
     D = Design(top=TOP, var_path=VAR_PATH)
 else:
     VARIANT = sys.argv[1] if len(sys.argv) > 1 else "p3.6"
+    EXTRA_MODE_SDCS = []
     D = Design(VARIANT)
 MAX_TURNS = 40
 STALE_WNS_LIMIT = 6   # stop early if WNS hasn't improved in this many consecutive moves
 AREA_WARN_PCT = 1.0   # log a caution if cumulative area growth exceeds this % of baseline
+
+EXTRA_MODES = {f"mode_{i+2}": path for i, path in enumerate(EXTRA_MODE_SDCS)}
+
 BASE = D.sta()
 BASE_HOLD = D.hold()
+BASE_MODES = {name: D.setup_under_sdc(name, path) for name, path in EXTRA_MODES.items()}
 BEST = (BASE["wns_ns"], BASE["tns_ns"], BASE["area"], open(D.netlist).read())
 _area_warned = False
 
@@ -182,6 +188,8 @@ def resize_cell(instance, new_cell):
 
     before = D.sta()
     before_hold = D.hold()
+    before_modes = {name: D.setup_under_sdc(name, path)
+                    for name, path in EXTRA_MODES.items()}
     D.snapshot()
     n = D._swap(instance, old_cell, new_cell)
     if n != 1:
@@ -190,6 +198,8 @@ def resize_cell(instance, new_cell):
     D.invalidate()
     after = D.sta()
     after_hold = D.hold()
+    after_modes = {name: D.setup_under_sdc(name, path)
+                   for name, path in EXTRA_MODES.items()}
 
     delta = round(after["wns_ns"] - before["wns_ns"], 3)
     dtns = round(after["tns_ns"] - before["tns_ns"], 3)
@@ -200,12 +210,24 @@ def resize_cell(instance, new_cell):
         hold_delta = round(after_hold["hold_wns_ns"] - before_hold["hold_wns_ns"], 4)
         hold_ok = hold_delta >= 0   # hold must not get WORSE because of this move
 
+    # A mode "regresses" if this move made either its WNS or TNS strictly
+    # worse than it was before the move -- full multi-mode signoff: every
+    # mode must be no worse, not just the primary one.
+    mode_regressions = []
+    for name in EXTRA_MODES:
+        b, a = before_modes[name], after_modes[name]
+        if (b["wns_ns"] is not None and a["wns_ns"] is not None and a["wns_ns"] < b["wns_ns"]) or \
+           (b["tns_ns"] is not None and a["tns_ns"] is not None and a["tns_ns"] < b["tns_ns"]):
+            mode_regressions.append(name)
+    modes_ok = len(mode_regressions) == 0
+
     setup_improved = delta > 0 or dtns > 0
-    kept = setup_improved and hold_ok
+    kept = setup_improved and hold_ok and modes_ok
     if not kept:
         D.revert()
         after = before
         after_hold = before_hold
+        after_modes = before_modes
 
     area_delta = round(after["area"] - before["area"], 2) if kept else 0.0
     wns_efficiency = round(delta / area_delta, 4) if (kept and area_delta > 0) else None
@@ -214,7 +236,9 @@ def resize_cell(instance, new_cell):
     D.history.append({"instance": instance, "from": old_cell, "to": new_cell,
                       "delta_wns": delta, "delta_tns": dtns, "kept": kept,
                       "area_delta": area_delta, "hold_delta": hold_delta,
-                      "reverted_for_hold": setup_improved and not hold_ok})
+                      "reverted_for_hold": setup_improved and hold_ok is False,
+                      "reverted_for_mode": setup_improved and hold_ok and not modes_ok,
+                      "regressed_modes": mode_regressions if mode_regressions else None})
 
     global BEST, _area_warned
     if kept and after["wns_ns"] > BEST[0]:
@@ -230,6 +254,15 @@ def resize_cell(instance, new_cell):
                        f"{round(cumulative_pct, 2)}% of baseline area. "
                        f"Prefer smaller/cheaper resizes from here if any remain viable.")
 
+    reverted_reason = None
+    if not kept:
+        if setup_improved and not hold_ok:
+            reverted_reason = "hold_would_worsen"
+        elif setup_improved and not modes_ok:
+            reverted_reason = f"mode_would_regress: {', '.join(mode_regressions)}"
+        else:
+            reverted_reason = "no_setup_improvement"
+
     return {"ok": True, "from": old_cell, "to": new_cell,
             "wns_before": before["wns_ns"], "wns_after": after["wns_ns"],
             "delta_wns": delta,
@@ -238,12 +271,12 @@ def resize_cell(instance, new_cell):
             "hold_wns_before": before_hold["hold_wns_ns"],
             "hold_wns_after": after_hold["hold_wns_ns"],
             "hold_delta": hold_delta,
+            "regressed_modes": mode_regressions if mode_regressions else None,
             "area_delta": area_delta,
             "wns_efficiency_per_area": wns_efficiency,
             "tns_efficiency_per_area": tns_efficiency,
             "kept": kept,
-            "reverted_reason": ("hold_would_worsen" if (setup_improved and not hold_ok)
-                                else ("no_setup_improvement" if not kept else None)),
+            "reverted_reason": reverted_reason,
             "area_budget_warning": warning}
 
 
@@ -342,7 +375,11 @@ messages = [
                                 f"Setup baseline: {BASE}. Hold baseline: {BASE_HOLD}."},
 ]
 
-print(f"=== {VARIANT} baseline: {BASE} | hold baseline: {BASE_HOLD} ===\n")
+print(f"=== {VARIANT} baseline: {BASE} | hold baseline: {BASE_HOLD} ===")
+if EXTRA_MODES:
+    for name, m in BASE_MODES.items():
+        print(f"    extra mode '{name}' ({EXTRA_MODES[name]}) baseline: {m}")
+print()
 
 stale_wns_moves = 0
 plateaued = False

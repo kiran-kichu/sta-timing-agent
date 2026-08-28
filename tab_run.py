@@ -14,10 +14,21 @@ def render():
     netlist_file = stl.file_uploader("Netlist (Verilog, .v)", type=["v"])
     sdc_file = stl.file_uploader("Constraints (SDC, .sdc)", type=["sdc"])
     top = stl.text_input("Top module name")
+
+    with stl.expander("Additional modes (optional) — multi-mode signoff"):
+        stl.caption("Upload extra SDC files representing other operating modes "
+                    "(e.g. a tighter clock period, a scan/test mode). A move "
+                    "will only be kept if it does not regress ANY mode, not "
+                    "just the primary one above.")
+        extra_mode_files = stl.file_uploader(
+            "Extra mode SDC file(s)", type=["sdc"], accept_multiple_files=True)
+
     go = stl.button("Run agent", type="primary", use_container_width=True)
 
-    stl.caption("Each move re-runs OpenSTA. A hard design takes 1-2 minutes "
-                "and costs roughly EUR 0.17 in API calls.")
+    stl.caption("Each move re-runs OpenSTA at setup + hold + every extra mode. "
+                "A hard design takes 1-2 minutes and costs roughly EUR 0.17 "
+                "in API calls; extra modes add real OpenSTA runtime but not "
+                "extra API cost.")
 
     if not go:
         return
@@ -34,12 +45,20 @@ def render():
     with open(sdc_path, "wb") as f:
         f.write(sdc_file.getbuffer())
 
+    extra_mode_paths = []
+    for i, ef in enumerate(extra_mode_files or []):
+        p = os.path.join(tmpdir, f"mode_extra_{i}.sdc")
+        with open(p, "wb") as f:
+            f.write(ef.getbuffer())
+        extra_mode_paths.append(p)
+
     log_box = stl.empty()
     chart_box = stl.empty()
     lines, wns_series = [], []
     env = dict(os.environ, PYTHONUNBUFFERED="1")
 
-    cmd = [sys.executable, "-u", "real_agent_tns.py", "--custom", tmpdir, top.strip()]
+    cmd = ([sys.executable, "-u", "real_agent_tns.py", "--custom", tmpdir, top.strip()]
+           + extra_mode_paths)
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             text=True, env=env)
     result = None
@@ -83,3 +102,6 @@ def render():
                 f"{result['moves_kept']} / {result['moves_attempted']}")
     stl.caption(f"{result['moves_reverted']} moves reverted after measuring "
                 f"no improvement. Harmful moves kept: {result['harmful_kept']}.")
+    if extra_mode_paths:
+        stl.caption(f"{len(extra_mode_paths)} additional mode(s) checked on "
+                    f"every move — a move was rejected if it regressed any of them.")

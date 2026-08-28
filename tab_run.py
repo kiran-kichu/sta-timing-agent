@@ -1,4 +1,4 @@
-import json, os, re, subprocess, sys
+import json, os, re, subprocess, sys, tempfile
 import streamlit as stl
 import ui_env
 
@@ -9,29 +9,41 @@ def render():
         stl.warning("Live runs need OpenSTA. Not available here.")
         return
 
-    vs = ui_env.variants()
-    c1, c2 = stl.columns([3, 1])
-    variant = c1.selectbox("Design variant (picorv32)", vs,
-                           index=vs.index("p3.6") if "p3.6" in vs else 0)
-    go = c2.button("Run agent", type="primary", use_container_width=True)
+    stl.caption("Uses the built-in sky130hd liberty file. Upload a synthesized "
+                "Verilog netlist and matching SDC constraints.")
+    netlist_file = stl.file_uploader("Netlist (Verilog, .v)", type=["v"])
+    sdc_file = stl.file_uploader("Constraints (SDC, .sdc)", type=["sdc"])
+    top = stl.text_input("Top module name")
+    go = stl.button("Run agent", type="primary", use_container_width=True)
 
-    stl.caption("Each move re-runs OpenSTA. A hard variant takes 1-2 minutes "
+    stl.caption("Each move re-runs OpenSTA. A hard design takes 1-2 minutes "
                 "and costs roughly EUR 0.17 in API calls.")
 
     if not go:
         return
 
+    if not (netlist_file and sdc_file and top.strip()):
+        stl.warning("Please provide a netlist, an SDC file, and a top module name.")
+        return
+
+    tmpdir = tempfile.mkdtemp(prefix="sta_upload_")
+    netlist_path = os.path.join(tmpdir, "1_2_yosys.v")
+    sdc_path = os.path.join(tmpdir, "1_synth.sdc")
+    with open(netlist_path, "wb") as f:
+        f.write(netlist_file.getbuffer())
+    with open(sdc_path, "wb") as f:
+        f.write(sdc_file.getbuffer())
+
     log_box = stl.empty()
     chart_box = stl.empty()
     lines, wns_series = [], []
-
     env = dict(os.environ, PYTHONUNBUFFERED="1")
-    proc = subprocess.Popen([sys.executable, "-u", "real_agent_tns.py", variant],
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            text=True, env=env)
 
+    cmd = [sys.executable, "-u", "real_agent_tns.py", "--custom", tmpdir, top.strip()]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, env=env)
     result = None
-    with stl.spinner(f"Agent working on {variant}..."):
+    with stl.spinner("Agent working..."):
         for line in proc.stdout:
             line = line.rstrip()
             if line.startswith("RESULT_JSON "):
@@ -45,18 +57,27 @@ def render():
                 wns_series.append(float(m.group(1)))
                 chart_box.line_chart({"WNS (ns)": wns_series})
     proc.wait()
-
     if not result:
         stl.error("Run produced no result. Full output:")
         stl.code("\n".join(lines[-40:]))
         return
 
-    stl.success("Done")
+    timing_closed = result["wns_final"] >= 0 and result["tns_final"] >= 0
+    wns_improvement = round(result["wns_final"] - result["wns_base"], 4)
+
+    if timing_closed:
+        stl.success(f"TIMING CLOSED — Final WNS: {result['wns_final']:+.4f} ns, "
+                    f"Final TNS: {result['tns_final']:+.4f} ns")
+    else:
+        stl.warning("⚠ Optimization finished — timing not closed")
+        stl.write(f"Final WNS: **{result['wns_final']:+.4f} ns**")
+        stl.write(f"Final TNS: **{result['tns_final']:+.4f} ns**")
+        stl.write(f"Best improvement: **{wns_improvement:+.4f} ns WNS**")
+
     m = stl.columns(4)
-    m[0].metric("WNS", result["wns_final"],
-                round(result["wns_final"] - result["wns_base"], 3))
-    m[1].metric("TNS", result["tns_final"],
-                round(result["tns_final"] - result["tns_base"], 2))
+    m[0].metric("WNS", f"{result['wns_final']:+.4f}", f"{wns_improvement:+.4f}")
+    m[1].metric("TNS", f"{result['tns_final']:+.4f}",
+                f"{round(result['tns_final'] - result['tns_base'], 4):+.4f}")
     m[2].metric("Area", f"+{result['area_delta']}")
     m[3].metric("Moves kept / tried",
                 f"{result['moves_kept']} / {result['moves_attempted']}")

@@ -459,6 +459,10 @@ print("RESULT_JSON " + _json.dumps({
                         if h["kept"] and h["delta_wns"] < 0),
     "plateaued": plateaued,
     "llm_turns_used": llm_turns_used,
+    "extra_modes": list(EXTRA_MODES.keys()),
+    "hold_wns_before_run": BASE_HOLD["hold_wns_ns"],
+    "hold_wns_after_run": final_hold["hold_wns_ns"],
+    "history": D.history,
 }))
 print(f"\nmoves attempted: {len(D.history)}")
 for h in D.history:

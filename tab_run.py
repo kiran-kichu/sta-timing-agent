@@ -1,6 +1,7 @@
 import json, os, re, subprocess, sys, tempfile
 import streamlit as stl
 import ui_env
+import report_builder
 
 WNS_RE = re.compile(r"'wns_after': (-?[\d.]+)")
 
@@ -105,3 +106,14 @@ def render():
     if extra_mode_paths:
         stl.caption(f"{len(extra_mode_paths)} additional mode(s) checked on "
                     f"every move — a move was rejected if it regressed any of them.")
+
+    try:
+        pdf_bytes = report_builder.build_report_pdf(result)
+        stl.download_button(
+            label="Download signoff report (PDF)",
+            data=pdf_bytes,
+            file_name=f"sta_signoff_report_{top.strip()}.pdf",
+            mime="application/pdf",
+        )
+    except Exception as e:
+        stl.caption(f"Report generation failed: {e}")

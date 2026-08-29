@@ -1,6 +1,6 @@
 """The agent, driving real OpenSTA on a real netlist."""
 
-import json, os, sys
+import json, os, sys, time
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -40,6 +40,14 @@ BASE_HOLD = D.hold()
 BASE_MODES = {name: D.setup_under_sdc(name, path) for name, path in EXTRA_MODES.items()}
 BEST = (BASE["wns_ns"], BASE["tns_ns"], BASE["area"], open(D.netlist).read())
 _area_warned = False
+
+# Experiment/snapshot tree: every attempted move becomes a numbered node with
+# a parent pointer to the last ACCEPTED state it branched from. Only accepted
+# experiments store the full netlist (rejected ones are cheap to discard --
+# they never persisted past their own measurement anyway).
+EXPERIMENTS = []
+_exp_counter = 0
+_last_accepted_id = "baseline"
 
 
 # ------------------------- TOOLS -------------------------
@@ -186,6 +194,7 @@ def generate_candidate_moves(n=8):
 
 
 def resize_cell(instance, new_cell):
+    _exp_start_time = time.time()
     if new_cell not in AREAS:
         return {"error": f"{new_cell} is not in the liberty file"}
 
@@ -248,7 +257,37 @@ def resize_cell(instance, new_cell):
                       "reverted_for_mode": setup_improved and hold_ok and not modes_ok,
                       "regressed_modes": mode_regressions if mode_regressions else None})
 
-    global BEST, _area_warned
+    global BEST, _area_warned, EXPERIMENTS, _exp_counter, _last_accepted_id
+
+    if kept:
+        status = "accepted"
+    elif setup_improved and not hold_ok:
+        status = "rejected_hold"
+    elif setup_improved and hold_ok and not modes_ok:
+        status = "rejected_mode"
+    else:
+        status = "rejected_no_improvement"
+
+    _exp_counter += 1
+    experiment = {
+        "experiment_id": f"exp_{_exp_counter:05d}",
+        "parent": _last_accepted_id,
+        "change": {"instance": instance, "from": old_cell, "to": new_cell},
+        "setup_wns_before": before["wns_ns"], "setup_wns_after": after["wns_ns"],
+        "setup_tns_before": before["tns_ns"], "setup_tns_after": after["tns_ns"],
+        "hold_wns_before": before_hold["hold_wns_ns"], "hold_wns_after": after_hold["hold_wns_ns"],
+        "modes": {name: {"wns_before": before_modes[name]["wns_ns"],
+                          "wns_after": after_modes[name]["wns_ns"],
+                          "tns_before": before_modes[name]["tns_ns"],
+                          "tns_after": after_modes[name]["tns_ns"]}
+                  for name in EXTRA_MODES},
+        "status": status,
+        "runtime": round(time.time() - _exp_start_time, 2),
+    }
+    if kept:
+        experiment["netlist_snapshot"] = open(D.netlist).read()
+        _last_accepted_id = experiment["experiment_id"]
+    EXPERIMENTS.append(experiment)
     if kept and after["wns_ns"] > BEST[0]:
         BEST = (after["wns_ns"], after["tns_ns"], after["area"],
                 open(D.netlist).read())
@@ -471,6 +510,8 @@ print("RESULT_JSON " + _json.dumps({
     "hold_wns_before_run": BASE_HOLD["hold_wns_ns"],
     "hold_wns_after_run": final_hold["hold_wns_ns"],
     "history": D.history,
+    "experiments": [{k: v for k, v in e.items() if k != "netlist_snapshot"}
+                    for e in EXPERIMENTS],
 }))
 print(f"\nmoves attempted: {len(D.history)}")
 for h in D.history:

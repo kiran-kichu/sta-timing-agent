@@ -28,6 +28,14 @@ AREA_WARN_PCT = 1.0   # log a caution if cumulative area growth exceeds this % o
 EXTRA_MODES = {f"mode_{i+2}": path for i, path in enumerate(EXTRA_MODE_SDCS)}
 
 BASE = D.sta()
+
+if BASE["wns_ns"] is None:
+    print(f"ERROR: OpenSTA could not measure timing for top module '{TOP}'. "
+          f"This almost always means '{TOP}' does not match any module name in "
+          f"the uploaded netlist -- double-check the top module name against "
+          f"your Verilog file and try again.")
+    sys.exit(1)
+
 BASE_HOLD = D.hold()
 BASE_MODES = {name: D.setup_under_sdc(name, path) for name, path in EXTRA_MODES.items()}
 BEST = (BASE["wns_ns"], BASE["tns_ns"], BASE["area"], open(D.netlist).read())

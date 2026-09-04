@@ -41,11 +41,13 @@ if ui_env.live():
 else:
     stl.info("REPLAY — no OpenSTA here; live runs are unavailable")
 
-import tab_run, tab_analyze
+import tab_run, tab_analyze, tab_power
 
-t_run, t_ana = stl.tabs(["Run agent", "Analyze a report"])
+t_run, t_ana, t_pow = stl.tabs(["Run agent", "Analyze a report", "Power Agent"])
 
 with t_run:
     tab_run.render()
 with t_ana:
     tab_analyze.render()
+with t_pow:
+    tab_power.render()

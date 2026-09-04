@@ -1,12 +1,32 @@
 """What can this deployment actually do? Detect, don't assume."""
 import os, csv, glob, json, shutil
 
-ORFS = os.path.expanduser("~/OpenROAD-flow-scripts/flow")
+def _find_orfs_root():
+    candidates = [
+        os.path.expanduser("~/OpenROAD-flow-scripts/flow"),
+        "/OpenROAD-flow-scripts/flow",
+    ]
+    for c in candidates:
+        if os.path.isdir(c):
+            return c
+    return candidates[0]
+
+ORFS = _find_orfs_root()
 
 def has_sta():
-    p = os.path.expanduser(
-        "~/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/sta")
-    return (os.path.isfile(p) and os.access(p, os.X_OK)) or bool(shutil.which("sta"))
+    # Accept either a standalone `sta` binary or the full `openroad` binary
+    # (a superset that includes all of OpenSTA's Tcl commands) -- the
+    # openroad/orfs-based deployment only ships the latter. ORFS here
+    # already points at the correct root (see _find_orfs_root above).
+    root = ORFS.rsplit("/flow", 1)[0]  # strip the trailing /flow
+    candidates = [
+        f"{root}/tools/install/OpenROAD/bin/sta",
+        f"{root}/tools/install/OpenROAD/bin/openroad",
+    ]
+    for p in candidates:
+        if os.path.isfile(p) and os.access(p, os.X_OK):
+            return True
+    return bool(shutil.which("sta")) or bool(shutil.which("openroad"))
 
 def variants():
     d = f"{ORFS}/results/sky130hd/picorv32"

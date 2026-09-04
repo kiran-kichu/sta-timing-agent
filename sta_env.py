@@ -6,7 +6,20 @@ OpenSTA and edits a netlist. It is independently testable.
 
 import os, re, shutil, subprocess, collections
 
-ORFS = os.path.expanduser("~/OpenROAD-flow-scripts/flow")
+def _find_orfs_root():
+    # ~/OpenROAD-flow-scripts is correct for local dev; deployments based on
+    # the openroad/orfs Docker image place it at /OpenROAD-flow-scripts
+    # instead (no leading /root), since that image's WORKDIR is root-level.
+    candidates = [
+        os.path.expanduser("~/OpenROAD-flow-scripts/flow"),
+        "/OpenROAD-flow-scripts/flow",
+    ]
+    for c in candidates:
+        if os.path.isdir(c):
+            return c
+    return candidates[0]  # fall through to the original default if neither exists yet
+
+ORFS = _find_orfs_root()
 LIB  = f"{ORFS}/platforms/sky130hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib"
 
 # Fast corner (min delay analysis) for hold checking. Same folder as LIB so
@@ -16,14 +29,22 @@ LIB_FAST = f"{ORFS}/platforms/sky130hd/lib/sky130_fd_sc_hd__ff_n40C_1v95.lib"
 WORK = os.path.expanduser("~/sta-agent/work")
 
 def _find_sta():
+    # The full `openroad` binary is a superset that includes all of
+    # OpenSTA's Tcl commands -- accept it as a valid substitute for the
+    # standalone `sta` binary when that isn't present (e.g. deployments
+    # based on the openroad/orfs image, which only ships `openroad`).
     cand = [
         os.path.expanduser("~/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/sta"),
         shutil.which("sta"),
+        os.path.expanduser("~/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad"),
+        "/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad",
+        "/root/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad",
+        shutil.which("openroad"),
     ]
     for c in cand:
         if c and os.path.isfile(c) and os.access(c, os.X_OK):
             return c
-    raise RuntimeError("Could not find the `sta` binary. Tried: " + str(cand))
+    raise RuntimeError("Could not find the `sta` or `openroad` binary. Tried: " + str(cand))
 
 STA_BIN = _find_sta()
 
